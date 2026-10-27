@@ -794,7 +794,7 @@
     hint.timer = setTimeout(() => { clearHint(); applyAuto(); }, 3400);
   }
 
-  // Click: send the run to the destination where it makes the tallest ordered stack.
+  // Click: send the run where it matches suit (colour, in 2-suit games); else onto the tallest ordered stack.
   function autoMove(id) {
     const loc = locate(id);
     if (loc.where !== 'tab' || !G.up[id] || G.won) return;
@@ -812,7 +812,8 @@
       if (t ? t.rank !== card.rank + 1 : i === 0) continue;
       const stack = t ? orderedLen(d) + runLen : runLen;
       const sameLen = t && t.suit === card.suit ? G.tableau[d].length - runStart(d) + runLen : 0;
-      const key = [sameLen >= 13 ? 1 : 0, t ? 1 : 0, stack, sameLen, G.tableau[d].length];
+      // completes a suit > any real card > same suit (red/black match in 2-suit) > tallest stack
+      const key = [sameLen >= 13 ? 1 : 0, t ? 1 : 0, sameLen ? 1 : 0, stack, sameLen, G.tableau[d].length];
       if (!best || cmpKey(key, best.key) > 0) best = { d, key };
     }
     if (!best) {
