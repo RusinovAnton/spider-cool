@@ -713,6 +713,8 @@
   }
 
   // Hints, best → worst: one-move gains, plus setups whose follow-up gains even more.
+  // One entry per run: when a run fits several spots, it goes where a click would send it
+  // (completes a suit > same suit > best score), so the hint and autoMove always agree.
   function analyze() {
     const T = G.tableau, U = G.up;
     const onTable = T.reduce((n, p) => n + p.length, 0);
@@ -726,29 +728,77 @@
       return { m, T1: r.T, done: r.done, gain: boardValue(r.T, U, needFill) + r.done * 1000 - v0 };
     });
     const available = new Set(moves.map(x => moveKey(T, x.m))); // a setup must unlock something new
-    const list = [];
+    const byRun = new Map();
     for (const { m, T1, done, gain } of moves) {
       if (!done && seenPositions.has(posSig(T1, U))) continue; // been there: would loop
-      const movedId = T[m.from][m.idx];
+      const pile = T[m.from], lead = C(pile[m.idx]), under = m.idx > 0 ? C(pile[m.idx - 1]) : null;
+      const dt = T[m.to].length ? C(T[m.to][T[m.to].length - 1]) : null;
+      // splitting a same-suit run: only worth it if the follow-up reveals, frees a column or completes
+      const splits = !done && under && U[under.id] && under.suit === lead.suit && under.rank === lead.rank + 1;
+      const movedId = pile[m.idx];
       let best = null;
       for (const m2 of legalMoves(T1, U)) {
         if (T1[m2.from][m2.idx] === movedId) continue;  // same cards again
         if (available.has(moveKey(T1, m2))) continue;  // was possible anyway
+        // the rest of the run we just split, going where the whole run could have gone
+        if (m2.from === m.from && available.has(moveKey(T, { from: m.from, idx: m2.idx, to: m2.to }))) continue;
         const r2 = applyIn(T1, U, m2);
+        if (splits && !r2.done && !(m2.idx === 0 ? !needFill : !U[T1[m2.from][m2.idx - 1]])) continue;
         const g2 = boardValue(r2.T, U, needFill) + (done + r2.done) * 1000 - v0;
         if (!best || g2 > best.g2) best = { m2, g2, done2: r2.done };
       }
       const setup = best && 0.9 * best.g2 > gain;
+      if (splits && !setup && !(needFill && !dt)) continue;
       const score = setup ? 0.9 * best.g2 : gain;
       if (score <= 0) continue;
-      const why = gain > 0 ? moveWhy(T, U, m, done, needFill) : [];
-      if (setup) why.push(`${why.length ? 'then' : 'sets up'} ${moveText(T1, best.m2)}${best.done2 ? ' (completes a suit!)' : ''}`);
-      const label = `Move ${moveText(T, m)}${why.length ? ' — ' + why.join(', ') : ''}`;
-      list.push({ from: m.from, idx: m.idx, to: m.to, score, label });
+      let why = gain > 0 ? moveWhy(T, U, m, done, needFill) : [];
+      if (splits && setup && best.m2.to === m.from) {
+        // a swap: say plainly why breaking the run pays off
+        const m2 = best.m2, p2 = T1[m2.from];
+        const pay = best.done2 ? 'completes a suit!' : m2.idx > 0 ? 'reveals a card' : 'frees a column';
+        why = [`frees ${cardName(under)} for ${cardName(C(p2[m2.idx]))}${p2.length - m2.idx > 1 ? `<span class="muted"> +${p2.length - m2.idx - 1}</span>` : ''}, which ${pay}`];
+      } else if (setup) why.push(`${why.length ? 'then' : 'sets up'} ${moveText(T1, best.m2)}${best.done2 ? ' (completes a suit!)' : ''}`);
+      const h = { from: m.from, idx: m.idx, to: m.to, score, why, rank: [done, dt && dt.suit === lead.suit ? 1 : 0, score] };
+      const k = `${m.from}:${m.idx}`, cur = byRun.get(k);
+      if (!cur) byRun.set(k, { h, score });
+      else {
+        cur.score = Math.max(cur.score, score);
+        if (cmpKey(h.rank, cur.h.rank) > 0) cur.h = h;
+      }
     }
-    list.sort((a, b) => b.score - a.score);
+    // Off-suit onto a card that has a move of its own (4♥ onto 5♠ while 5♠ could go onto 6♥)
+    // glues that card in place, since 5♠ 4♥ can't move together. Moving 5♠ first loses
+    // nothing (4♥ can still follow), so that move jumps ahead.
+    // Repeats so chains settle (6♥ waits on 7♠, which waits on 8♥).
+    const runs = [...byRun.values()];
+    for (let pass = 0, moved = true; moved && pass < 10; pass++) {
+      moved = false;
+      for (const e of runs) {
+        const { h } = e, dt = T[h.to].length ? C(T[h.to][T[h.to].length - 1]) : null;
+        if (!dt || dt.suit === C(T[h.from][h.idx]).suit) continue;
+        let first = null;
+        for (const o of runs) {
+          if (o.h.from === h.to && o.h.idx >= runStartIn(T, U, h.to) && (!first || o.score > first.score)) first = o;
+        }
+        if (!first || first.score > e.score) continue;
+        first.score = e.score + 0.01;
+        first.h.follow = first.h.follow || C(T[h.from][h.idx]);
+        moved = true;
+      }
+    }
+    for (const { h } of runs) {
+      h.label = `Move ${moveText(T, h)}${h.follow ? ` first, so ${cardName(h.follow)} can follow` : ''}${h.why.length ? ' — ' + h.why.join(', ') : ''}`;
+    }
+    const list = runs.map(({ h, score }) => ({ ...h, score }))
+      .sort((a, b) => b.score - a.score || cmpKey(b.rank, a.rank));
     if (G.stock.length && !dealBlocked) list.push({ deal: true, score: -1000 });
     return list;
+  }
+
+  // The hint's choice for the run starting at pile[idx], if hints have one.
+  function hintFor(from, idx) {
+    if (hint.version !== G.version) hint = { version: G.version, list: analyze(), idx: -1, timer: 0 };
+    return hint.list.find(h => !h.deal && h.from === from && h.idx === idx) || null;
   }
 
   function clearHint() {
@@ -803,6 +853,9 @@
       reject(pile.slice(i), 'Only a same-suit run can move together.');
       return;
     }
+    // same spot the hint would pick for this run (Pro has no hints, but the same smarts)
+    const h = hintFor(s, i);
+    if (h) return doMove(s, i, h.to);
     const card = C(id);
     const runLen = pile.length - i;
     let best = null;
