@@ -11,7 +11,7 @@
   const MODE_GLYPHS = { 1: [0], 2: [0, 1], 4: [0, 1, 2, 3] };
   const GAME_MODES = {
     noob: { name: '🐣 Noob', sub: 'Best move always lit' },
-    normal: { name: 'Normal', sub: 'Hints on click · 1 undo' },
+    normal: { name: 'Normal', sub: 'Hints on click · undo until a card turns up' },
     pro: { name: '⚡ Pro', sub: 'No hints · no undo' },
   };
   // Classic pip layouts: [x %, row fraction 0 (top) → 1 (bottom)]
@@ -411,8 +411,16 @@
   }
   // Only the last move can be undone: keep a single snapshot, cleared once used.
   function pushHistory() {
+    G.undoLocked = false;
     if (G.pro) return; // no undo in Pro games
     G.history = [snap()];
+  }
+  // Outside Noob mode a turned-up card can't be taken back (deals turn up cards too).
+  const upCount = u => u.reduce((n, x) => n + x, 0);
+  function lockUndoOnReveal() {
+    if (G.noob || !G.history.length || upCount(G.up) <= upCount(G.history[0].u)) return;
+    G.history = [];
+    G.undoLocked = true;
   }
 
   function reveal(p) {
@@ -524,7 +532,8 @@
     if (G && G.pro && !G.won) return proBlocked('No undo in Pro games. Every move counts!');
     if (!G || G.won || !G.history.length) {
       Sound.play('invalid');
-      if (G && !G.won) Mascot.say(G.moves ? 'Only one undo per move — make a move first.' : 'Nothing to undo yet.', 'oh', 2200);
+      if (G && !G.won) Mascot.say(G.undoLocked ? 'A turned-up card can’t be turned back down — no undo.'
+        : G.moves ? 'Only one undo per move — make a move first.' : 'Nothing to undo yet.', 'oh', 2600);
       return;
     }
     const s = G.history.pop();
@@ -542,6 +551,7 @@
   }
 
   function changed() {
+    lockUndoOnReveal();
     seenPositions.add(posSig(G.tableau, G.up));
     setHover([]);
     G.version++;
