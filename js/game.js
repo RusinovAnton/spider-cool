@@ -758,7 +758,10 @@
         const pay = best.done2 ? 'completes a suit!' : m2.idx > 0 ? 'reveals a card' : 'frees a column';
         why = [`frees ${cardName(under)} for ${cardName(C(p2[m2.idx]))}${p2.length - m2.idx > 1 ? `<span class="muted"> +${p2.length - m2.idx - 1}</span>` : ''}, which ${pay}`];
       } else if (setup) why.push(`${why.length ? 'then' : 'sets up'} ${moveText(T1, best.m2)}${best.done2 ? ' (completes a suit!)' : ''}`);
-      const h = { from: m.from, idx: m.idx, to: m.to, score, why, rank: [done, dt && dt.suit === lead.suit ? 1 : 0, score] };
+      // same suit: grow the longest run (closest to complete); off-suit: bury the shortest pile,
+      // keeping the big stacks clean so they can be finished
+      const same = !!dt && dt.suit === lead.suit;
+      const h = { from: m.from, idx: m.idx, to: m.to, score, why, rank: [done, same ? 1 : 0, same ? T[m.to].length - runStartIn(T, U, m.to) : -T[m.to].length, score] };
       const k = `${m.from}:${m.idx}`, cur = byRun.get(k);
       if (!cur) byRun.set(k, { h, score });
       else {
@@ -844,7 +847,7 @@
     hint.timer = setTimeout(() => { clearHint(); applyAuto(); }, 3400);
   }
 
-  // Click: send the run where it matches suit (colour, in 2-suit games); else onto the tallest ordered stack.
+  // Click fallback (no hint for this run): same suit onto the longest run; else onto the shortest pile.
   function autoMove(id) {
     const loc = locate(id);
     if (loc.where !== 'tab' || !G.up[id] || G.won) return;
@@ -863,10 +866,9 @@
       if (d === s) continue;
       const t = topOf(d);
       if (t ? t.rank !== card.rank + 1 : i === 0) continue;
-      const stack = t ? orderedLen(d) + runLen : runLen;
       const sameLen = t && t.suit === card.suit ? G.tableau[d].length - runStart(d) + runLen : 0;
-      // completes a suit > any real card > same suit (red/black match in 2-suit) > tallest stack
-      const key = [sameLen >= 13 ? 1 : 0, t ? 1 : 0, sameLen ? 1 : 0, stack, sameLen, G.tableau[d].length];
+      // completes a suit > any real card > same suit (longest run) > off-suit (shortest pile)
+      const key = [sameLen >= 13 ? 1 : 0, t ? 1 : 0, sameLen ? 1 : 0, sameLen || -G.tableau[d].length];
       if (!best || cmpKey(key, best.key) > 0) best = { d, key };
     }
     if (!best) {
