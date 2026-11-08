@@ -771,7 +771,9 @@
       // same suit: grow the longest run (closest to complete); off-suit: bury the shortest pile,
       // keeping the big stacks clean so they can be finished
       const same = !!dt && dt.suit === lead.suit;
-      const h = { from: m.from, idx: m.idx, to: m.to, score, why, rank: [done, same ? 1 : 0, same ? T[m.to].length - runStartIn(T, U, m.to) : -T[m.to].length, score] };
+      // what the move itself achieves: 3 completes, 2 reveals / frees a column, 1 tidies
+      const prog = done ? 3 : (under && !U[under.id]) || (m.idx === 0 && !needFill) ? 2 : 1;
+      const h = { from: m.from, idx: m.idx, to: m.to, score, why, same, prog, rank: [done, same ? 1 : 0, same ? T[m.to].length - runStartIn(T, U, m.to) : -T[m.to].length, score] };
       const k = `${m.from}:${m.idx}`, cur = byRun.get(k);
       if (!cur) byRun.set(k, { h, score });
       else {
@@ -784,6 +786,14 @@
     // nothing (4♥ can still follow), so that move jumps ahead.
     // Repeats so chains settle (6♥ waits on 7♠, which waits on 8♥).
     const runs = [...byRun.values()];
+    // Two cards after one spot (Q♥ and Q♠ both fit K♠): same suit gets it, unless the
+    // off-suit card achieves more (reveals a card while the same-suit one doesn't).
+    for (const o of runs) {
+      if (o.h.same || !T[o.h.to].length) continue;
+      for (const s of runs) {
+        if (s.h.same && s.h.to === o.h.to && s.h.prog >= o.h.prog && s.score <= o.score) o.score = s.score - 0.01;
+      }
+    }
     for (let pass = 0, moved = true; moved && pass < 10; pass++) {
       moved = false;
       for (const e of runs) {
