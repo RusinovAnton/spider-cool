@@ -44,6 +44,7 @@ const Stats = (() => {
       winRate: games.length ? wins.length / games.length : 0,
       bestTime: ranked.length ? Math.min(...ranked.map(g => g.time)) : null,
       bestScore: ranked.length ? Math.max(...ranked.map(g => g.score)) : null,
+      leastMoves: ranked.length ? Math.min(...ranked.map(g => g.moves)) : null,
       avgWinTime: wins.length ? sum(wins, g => g.time) / wins.length : null,
       avgMoves: wins.length ? sum(wins, g => g.moves) / wins.length : null,
       totalTime: sum(games, g => g.time),

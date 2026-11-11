@@ -1144,6 +1144,7 @@
       time,
       bestTime: !G.noob && (prev.bestTime == null || time < prev.bestTime),
       bestScore: !G.noob && (prev.bestScore == null || G.score > prev.bestScore),
+      leastMoves: !G.noob && (prev.leastMoves == null || G.moves < prev.leastMoves),
     };
     recordGame(true);
     clearHint();
@@ -1178,13 +1179,13 @@
           <div class="win-trophy">🏆</div>
           <div>
             <div class="win-head">You cleared ${MODE_NAME[G.suits]}!</div>
-            <div class="win-badges">${badge(G.pro, '⚡ Pro win — no hints, no undo!')}${badge(w.bestTime, 'New best time!')}${badge(w.bestScore, 'New best score!')}</div>
+            <div class="win-badges">${badge(G.pro, '⚡ Pro win — no hints, no undo!')}${badge(w.bestTime, 'New best time!')}${badge(w.bestScore, 'New best score!')}${badge(w.leastMoves, 'Fewest moves yet!')}</div>
           </div>
         </div>
         <div class="tiles">
           ${tile('Time', fmtTime(w.time))}
           ${tile('Score', G.score)}
-          ${tile('Moves', G.moves)}
+          ${tile('Moves', G.moves, s.leastMoves == null ? '' : `least ${s.leastMoves}`)}
           ${tile('Win streak', s.curStreak)}
           ${tile('Won', `${s.won}/${s.played}`)}
           ${tile('Best time', fmtTime(s.bestTime))}
@@ -1298,14 +1299,14 @@
       </tr>`).join('');
     return `
       <div class="tiles">
-        ${tile('Played', s.played)}
+        ${tile('Played', s.played, `${s.suitsDone} suits cleared`)}
         ${tile('Won', s.won, `${Math.round(s.winRate * 100)}% win rate`)}
         ${tile('Best time', fmtTime(s.bestTime))}
         ${tile('Best score', s.bestScore ?? '—')}
         ${tile('Avg win time', fmtTime(s.avgWinTime))}
         ${tile('Streak', s.curStreak, `best ${s.bestStreak}`)}
         ${tile('Time played', fmtTime(s.totalTime))}
-        ${tile('Suits cleared', s.suitsDone)}
+        ${tile('Least moves', s.leastMoves ?? '—', s.avgMoves == null ? '' : `avg ${Math.round(s.avgMoves)}`)}
         ${tile('Hints · Undos', `${s.hints} · ${s.undos}`)}
       </div>
       <div class="chart-card">
